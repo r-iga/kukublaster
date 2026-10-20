@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#111111">
+<title>KUKU BLASTER - 九九ドットゲーム</title>
+<style>
+  *{-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;background:#111;color:#ddd;font-family:monospace;
+    overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  body{display:flex;flex-direction:column;align-items:center;min-height:100dvh;box-sizing:border-box;
+    padding:max(8px,env(safe-area-inset-top)) 0 max(8px,env(safe-area-inset-bottom));}
+  /* 画面の高さにも収まるように幅を決める（キャンバス 256:224 + ボタン分） */
+  #pad,p.help{width:min(96vw,480px);}
+  /* 縦長キャンバス(192:320)を、下のボタン分を残して画面の高さいっぱいに */
+  #wrap{width:min(96vw,480px,calc((100dvh - 175px) * 192 / 320));}
+  canvas{display:block;width:100%;image-rendering:pixelated;image-rendering:crisp-edges;
+         border:4px solid #444;box-sizing:border-box;background:#000;touch-action:none;}
+  #pad{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px;touch-action:none;}
+  #pad button{font-family:monospace;font-size:clamp(20px,6vw,28px);font-weight:bold;
+    height:clamp(52px,8.5dvh,72px);padding:0;
+    background:#223;color:#fff;border:3px solid #557;border-bottom-color:#112;border-right-color:#112;
+    border-radius:0;cursor:pointer;user-select:none;touch-action:none;}
+  #pad button.down,#pad button:active{background:#446;transform:translateY(2px);}
+  #pad .ok{background:#4a2;border-color:#7d5 #231 #231 #7d5;font-size:clamp(16px,4.5vw,24px);}
+  #pad .ok.down,#pad .ok:active{background:#6c4;}
+  #pad .bs{background:#a42;border-color:#d75 #311 #311 #d75;}
+  p.help{font-size:13px;line-height:1.7;color:#aaa;}
+  #wrap{position:relative;}
+  /* 段えらびメニュー（キャンバスの上に重ねる） */
+  .menu{position:absolute;left:6%;right:6%;display:none;flex-direction:column;gap:8px;
+    font-family:monospace;color:#fff;text-align:center;}
+  .menu.show{display:flex;}
+  #menuTitle{top:34%;}
+  #menuOver{top:66%;}
+  .menu .lbl{font-size:clamp(12px,3.6vw,15px);color:#8cf;font-weight:bold;margin-top:4px;}
+  .menu button{font-family:monospace;font-weight:bold;font-size:clamp(14px,4.2vw,18px);
+    padding:10px 4px;color:#fff;background:#223;border:3px solid #557;border-bottom-color:#112;border-right-color:#112;
+    border-radius:0;cursor:pointer;touch-action:manipulation;}
+  .menu button:active{transform:translateY(2px);}
+  .menu .rand{background:#a60;border-color:#fc6 #320 #320 #fc6;}
+  .menu .go{background:#4a2;border-color:#7d5 #231 #231 #7d5;}
+  .menu .go:disabled{background:#333;border-color:#555;color:#777;}
+  .dans{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .dans button{padding:8px 0;}
+  .dans button.on{background:#ff0;color:#000;border-color:#ffa #660 #660 #ffa;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  @media (max-width:600px){ p.help{font-size:12px;padding:0 4px;box-sizing:border-box;} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="192" height="320"></canvas>
+  <div id="menuTitle" class="menu">
+    <button class="rand" id="btnRandom">ランダム（1〜9の段ぜんぶ）</button>
+    <div class="lbl">― または 段をえらぶ（いくつでも）―</div>
+    <div class="dans" id="dans"></div>
+    <div class="row2">
+      <button id="btnAll">全部 / 解除</button>
+      <button class="go" id="btnGo" disabled>スタート</button>
+    </div>
+  </div>
+  <div id="menuOver" class="menu">
+    <div class="row2">
+      <button class="go" id="btnRetry">もう一度</button>
+      <button id="btnBack">段をえらぶ</button>
+    </div>
+  </div>
+</div>
+<div id="pad">
+  <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+  <button data-k="4">4</button><button data-k="5">5</button><button data-k="B" class="bs">←</button>
+  <button data-k="6">6</button><button data-k="7">7</button><button data-k="8">8</button>
+  <button data-k="9">9</button><button data-k="0">0</button><button data-k="E" class="ok">OK</button>
+</div>
+<p class="help">
+  【はじめかた】「ランダム」ですぐスタート。練習したい段があれば、段のボタン（キーボードなら1〜9キー）でえらんで「スタート」。<br>
+  【あそびかた】上から落ちてくる九九の答えを入力して <b>OK（Enter）</b> で発射！<br>
+  ねらうのは<b>いちばん下の問題（黄色く点滅）</b>から順番です。地面に落ちるとライフが1減り、3回でゲームオーバー。<br>
+  レベルが上がると落ちる速さが上がり、<b>赤い高速ブロック</b>も混ざってきます（倒すと点数2倍）。←で1文字消せます。
+</p>
+
+<script>
+// ====== 基本設定 ======
+const W = 192, H = 320, GROUND = 292;
+const OY = (GROUND - 192) / 2 | 0; // タイトル等の文字を縦中央に寄せるオフセット
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// ====== 5x7 ドットフォント ======
+const FONT = {
+  '0':['01110','10001','10011','10101','11001','10001','01110'],
+  '1':['00100','01100','00100','00100','00100','00100','01110'],
+  '2':['01110','10001','00001','00010','00100','01000','11111'],
+  '3':['11111','00010','00100','00010','00001','10001','01110'],
+  '4':['00010','00110','01010','10010','11111','00010','00010'],
+  '5':['11111','10000','11110','00001','00001','10001','01110'],
+  '6':['00110','01000','10000','11110','10001','10001','01110'],
+  '7':['11111','00001','00010','00100','01000','01000','01000'],
+  '8':['01110','10001','10001','01110','10001','10001','01110'],
+  '9':['01110','10001','10001','01111','00001','00010','01100'],
+  'x':['00000','10001','01010','00100','01010','10001','00000'],
+  '=':['00000','00000','11111','00000','11111','00000','00000'],
+  '?':['01110','10001','00001','00010','00100','00000','00100'],
+  '!':['00100','00100','00100','00100','00100','00000','00100'],
+  ':':['00000','01100','01100','00000','01100','01100','00000'],
+  '>':['01000','00100','00010','00001','00010','00100','01000'],
+  '_':['00000','00000','00000','00000','00000','00000','11111'],
+  'A':['01110','10001','10001','11111','10001','10001','10001'],
+  'B':['11110','10001','10001','11110','10001','10001','11110'],
+  'C':['01110','10001','10000','10000','10000','10001','01110'],
+  'D':['11100','10010','10001','10001','10001','10010','11100'],
+  'E':['11111','10000','10000','11110','10000','10000','11111'],
+  'F':['11111','10000','10000','11110','10000','10000','10000'],
+  'G':['01110','10001','10000','10111','10001','10001','01111'],
+  'H':['10001','10001','10001','11111','10001','10001','10001'],
+  'I':['01110','00100','00100','00100','00100','00100','01110'],
+  'K':['10001','10010','10100','11000','10100','10010','10001'],
+  'L':['10000','10000','10000','10000','10000','10000','11111'],
+  'M':['10001','11011','10101','10101','10001','10001','10001'],
+  'N':['10001','10001','11001','10101','10011','10001','10001'],
+  'O':['01110','10001','10001','10001','10001','10001','01110'],
+  'P':['11110','10001','10001','11110','10000','10000','10000'],
+  'R':['11110','10001','10001','11110','10100','10010','10001'],
+  'S':['01111','10000','10000','01110','00001','00001','11110'],
+  'T':['11111','00100','00100','00100','00100','00100','00100'],
+  'U':['10001','10001','10001','10001','10001','10001','01110'],
+  'V':['10001','10001','10001','10001','10001','01010','00100'],
+  'W':['10001','10001','10001','10101','10101','10101','01010'],
+  'Y':['10001','10001','01010','00100','00100','00100','00100'],
+};
+function textW(s, sc=1){ return s.length*6*sc - sc; }
+function drawText(s, x, y, color='#fff', sc=1, shadow=true){
+  x = Math.round(x); y = Math.round(y);
+  if (shadow) drawText(s, x+sc, y+sc, '#000', sc, false);
+  ctx.fillStyle = color;
+  for (let i=0;i<s.length;i++){
+    const g = FONT[s[i]]; if (!g) continue;
+    for (let r=0;r<7;r++) for (let c=0;c<5;c++)
+      if (g[r][c]==='1') ctx.fillRect(x+(i*6+c)*sc, y+r*sc, sc, sc);
+  }
+}
+function drawTextC(s, y, color, sc=1){ drawText(s, (W-textW(s,sc))/2, y, color, sc); }
+
+// ====== ドット絵スプライト ======
+const HEART = ['0110110','1111111','1111111','0111110','0011100','0001000'];
+const CANNON = [
+  '00000110000000',
+  '00000110000000',
+  '00001111000000',
+  '00011111100000',
+  '01111111111100',
+  '11111111111110',
+  '11011011011010',
+];
+function drawSprite(map, x, y, color){
+  ctx.fillStyle = color;
+  for (let r=0;r<map.length;r++) for (let c=0;c<map[r].length;c++)
+    if (map[r][c]==='1') ctx.fillRect(Math.round(x)+c, Math.round(y)+r, 1, 1);
+}
+
+// ====== サウンド (8bit風) ======
+let actx = null;
+function beep(freq, dur, type='square', vol=0.08, slide=0){
+  try{
+    if (!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    if (slide) o.frequency.linearRampToValueAtTime(freq+slide, actx.currentTime+dur);
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.linearRampToValueAtTime(0, actx.currentTime+dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime+dur);
+  }catch(e){}
+}
+const SE = {
+  key:  ()=>beep(880,0.04),
+  shot: ()=>{ beep(1200,0.12,'square',0.07,-900); setTimeout(()=>beep(140,0.18,'sawtooth',0.08,-80),60); },
+  miss: ()=>beep(110,0.25,'sawtooth',0.1),
+  hit:  ()=>{ beep(200,0.3,'sawtooth',0.12,-150); },
+  lvup: ()=>[523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,0.09),i*80)),
+  over: ()=>[392,330,262,196].forEach((f,i)=>setTimeout(()=>beep(f,0.2,'triangle',0.12),i*200)),
+  start:()=>[262,392,523].forEach((f,i)=>setTimeout(()=>beep(f,0.08),i*70)),
+  warn: ()=>{ beep(1400,0.05,'square',0.05); setTimeout(()=>beep(1400,0.05,'square',0.05),90); },
+};
+
+// ====== ゲーム状態 ======
+let state = 'title';          // title / play / over
+let selected = new Set();     // 選んだ段（空ならランダム＝全部の段）
+let playDans = [1,2,3,4,5,6,7,8,9];
+let lastLabel = '', overTime = 0;
+let score = 0, hiScore = 0, level = 1, lives = 3;
+let problems = [], particles = [], lasers = [], popups = [];
+let input = '', spawnTimer = 0, shake = 0, wrongFlash = 0, lvupTimer = 0;
+let t = 0;
+
+const stars = Array.from({length:50}, ()=>({x:Math.random()*W|0, y:Math.random()*(GROUND-20)|0, p:Math.random()*6}));
+const city = [];
+for (let x=0; x<W; ){ const w=8+(Math.random()*14|0), h=6+(Math.random()*22|0); city.push({x,w,h}); x+=w+1; }
+
+function fallSpeed(){ return Math.min(100, 13 + (level-1)*6); }      // px/秒（縦長になった分だけ速め）
+function spawnInterval(){ return Math.max(0.9, 3.0 - (level-1)*0.22); } // 秒
+
+function startGame(dans){
+  playDans = (dans && dans.length) ? dans.slice().sort((a,b)=>a-b) : [1,2,3,4,5,6,7,8,9];
+  resetGame();
+}
+function resetGame(){
+  score = 0; level = 1; lives = 3;
+  problems = []; particles = []; lasers = []; popups = [];
+  input = ''; spawnTimer = 0.3; shake = 0; wrongFlash = 0; lvupTimer = 0;
+  state = 'play'; lastLabel = ''; SE.start(); updateMenus();
+}
+
+// 高速ブロックの出現率：LV1は0、LV2から上がっていき最大45%
+function fastChance(){ return Math.min(0.45, (level-1)*0.07); }
+
+function spawnProblem(){
+  let a, b, label, n = 0;
+  do {
+    a = playDans[Math.random()*playDans.length|0];
+    b = 1+(Math.random()*9|0);
+    label = a+'x'+b;
+  } while (label === lastLabel && ++n < 10);
+  lastLabel = label;
+  const bw = textW(label,2)+8, bh = 22;
+  let x, tries = 0;
+  do { x = 4 + Math.random()*(W-bw-8); tries++; }
+  while (tries<10 && problems.some(p=>p.y<40 && Math.abs(p.x-x)<bw+4));
+  const fast = Math.random() < fastChance();
+  // 高速ブロックは通常の1.6〜2.3倍（レベルが上がるほど上限も少し上がる）
+  const mul = fast ? 1.6 + Math.random()*Math.min(0.7, 0.3 + level*0.05) : 1;
+  problems.push({a,b,ans:a*b,label,x,y:-bh,bw,bh,jit:0,fast,mul});
+  if (fast) SE.warn();
+}
+
+function target(){
+  let best = null;
+  for (const p of problems) if (!best || p.y > best.y) best = p;
+  return best;
+}
+
+function explode(cx, cy, colors, n=28){
+  for (let i=0;i<n;i++){
+    const ang = Math.random()*Math.PI*2, sp = 30+Math.random()*90;
+    particles.push({x:cx,y:cy,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-30,
+      life:0.6+Math.random()*0.5,c:colors[i%colors.length],s:1+(Math.random()*2|0)});
+  }
+}
+
+function submit(){
+  if (state === 'title'){ startGame([...selected]); return; }   // 何も選んでなければランダム
+  if (state === 'over'){ if (t - overTime > 1.0) resetGame(); return; } // 連打で即リスタートしないよう1秒待つ
+  if (!input) return;
+  const tg = target();
+  if (!tg){ input=''; return; }
+  const cx = W/2, cy = GROUND+2;
+  if (parseInt(input,10) === tg.ans){
+    lasers.push({x1:cx,y1:cy,x2:tg.x+tg.bw/2,y2:tg.y+tg.bh/2,life:0.15});
+    explode(tg.x+tg.bw/2, tg.y+tg.bh/2, ['#fff','#ff0','#f80','#f30']);
+    let gain = 10*level + Math.max(0, Math.round((GROUND-tg.y)/20)); // 早く倒すほどボーナス
+    if (tg.fast) gain *= 2;                                            // 高速ブロックは2倍
+    score += gain;
+    popups.push({x:tg.x+tg.bw/2, y:tg.y, txt:''+gain, life:0.8});
+    problems.splice(problems.indexOf(tg),1);
+    SE.shot();
+    const newLv = 1 + Math.floor(score/150);
+    if (newLv > level){ level = newLv; lvupTimer = 1.6; setTimeout(SE.lvup,150); }
+    if (score > hiScore) hiScore = score;
+  } else {
+    wrongFlash = 0.4; tg.jit = 0.3; SE.miss();
+  }
+  input = '';
+}
+
+function pressKey(k){
+  if (k === 'E'){ submit(); return; }
+  if (state === 'title' && /^[1-9]$/.test(k)){ toggleDan(+k); SE.key(); return; }
+  if (state !== 'play') return;
+  if (k === 'B'){ input = input.slice(0,-1); return; }
+  if (/^\d$/.test(k) && input.length < 2){ input += k; SE.key(); }
+}
+
+// キーボード（日本語入力ONでも数字が入るよう e.code も見る）
+window.addEventListener('keydown', e=>{
+  let k = null;
+  const m = e.code && e.code.match(/^(?:Digit|Numpad)(\d)$/);
+  if (m) k = m[1];
+  else if (/^\d$/.test(e.key)) k = e.key;
+  else if (e.key==='Enter' || e.code==='Enter' || e.code==='NumpadEnter') k = 'E';
+  else if (e.key==='Backspace' || e.code==='Backspace') k = 'B';
+  if (k){ e.preventDefault(); pressKey(k); }
+});
+// スマホ用ボタン（pointerdownで即反応・押した見た目・軽い振動）
+document.querySelectorAll('#pad button').forEach(b=>{
+  b.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    b.classList.add('down');
+    if (navigator.vibrate) navigator.vibrate(10);
+    pressKey(b.dataset.k);
+  });
+  const up = ()=>b.classList.remove('down');
+  b.addEventListener('pointerup', up); b.addEventListener('pointerleave', up); b.addEventListener('pointercancel', up);
+  b.addEventListener('contextmenu', e=>e.preventDefault());
+});
+// タイトル・ゲームオーバー画面はキャンバスをタップでスタート
+cv.addEventListener('pointerdown', e=>{ e.preventDefault(); if (state === 'over') pressKey('E'); });
+
+// ====== 段えらびメニュー ======
+const dansEl = document.getElementById('dans');
+for (let d=1; d<=9; d++){
+  const b = document.createElement('button');
+  b.textContent = d + 'の段'; b.dataset.d = d;
+  b.addEventListener('click', ()=>{ toggleDan(d); SE.key(); });
+  dansEl.appendChild(b);
+}
+function toggleDan(d){ selected.has(d) ? selected.delete(d) : selected.add(d); updateMenus(); }
+function updateMenus(){
+  document.getElementById('menuTitle').classList.toggle('show', state === 'title');
+  document.getElementById('menuOver').classList.toggle('show', state === 'over' && t - overTime >= 0.9);
+  dansEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on', selected.has(+b.dataset.d)));
+  document.getElementById('btnGo').disabled = selected.size === 0;
+}
+document.getElementById('btnRandom').addEventListener('click', ()=>startGame(null));
+document.getElementById('btnGo').addEventListener('click', ()=>{ if (selected.size) startGame([...selected]); });
+document.getElementById('btnAll').addEventListener('click', ()=>{
+  if (selected.size === 9) selected.clear(); else for (let d=1; d<=9; d++) selected.add(d);
+  SE.key(); updateMenus();
+});
+document.getElementById('btnRetry').addEventListener('click', ()=>resetGame());
+document.getElementById('btnBack').addEventListener('click', ()=>{ state = 'title'; updateMenus(); });
+updateMenus();
+// ダブルタップ拡大・ピンチ拡大を防ぐ（iOS Safari対策）
+document.addEventListener('gesturestart', e=>e.preventDefault());
+document.addEventListener('dblclick', e=>e.preventDefault());
+
+// ====== 更新 ======
+function update(dt){
+  t += dt;
+  for (const s of stars) s.p += dt;
+  if (shake > 0) shake -= dt;
+  if (wrongFlash > 0) wrongFlash -= dt;
+  if (lvupTimer > 0) lvupTimer -= dt;
+
+  if (state === 'play'){
+    spawnTimer -= dt;
+    if (spawnTimer <= 0){ spawnProblem(); spawnTimer = spawnInterval(); }
+    const sp = fallSpeed();
+    for (let i=problems.length-1;i>=0;i--){
+      const p = problems[i];
+      p.y += sp*p.mul*dt;
+      if (p.jit > 0) p.jit -= dt;
+      if (p.y + p.bh >= GROUND){
+        explode(p.x+p.bw/2, GROUND-2, ['#f00','#f80','#888','#fff'], 36);
+        popups.push({x:p.x+p.bw/2, y:GROUND-30, txt:p.label+'='+p.ans, life:1.4});
+        problems.splice(i,1);
+        lives--; shake = 0.4; SE.hit();
+        if (lives <= 0){ state = 'over'; overTime = t; input=''; setTimeout(SE.over,300); setTimeout(updateMenus,1000); }
+      }
+    }
+  }
+  for (let i=particles.length-1;i>=0;i--){
+    const q = particles[i];
+    q.vy += 160*dt; q.x += q.vx*dt; q.y += q.vy*dt; q.life -= dt;
+    if (q.life <= 0) particles.splice(i,1);
+  }
+  for (let i=lasers.length-1;i>=0;i--){ lasers[i].life -= dt; if (lasers[i].life<=0) lasers.splice(i,1); }
+  for (let i=popups.length-1;i>=0;i--){ popups[i].y -= 20*dt; popups[i].life -= dt; if (popups[i].life<=0) popups.splice(i,1); }
+}
+
+// ====== 描画 ======
+function pad6(n){ return String(n).padStart(6,'0'); }
+
+function draw(){
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random()*4-2)|0, (Math.random()*4-2)|0);
+
+  // 空（段々グラデーション）
+  const sky = ['#0a0a2a','#0e0e38','#141448','#1a1a58','#22226a'];
+  const bandH = Math.ceil(GROUND/sky.length);
+  sky.forEach((c,i)=>{ ctx.fillStyle=c; ctx.fillRect(0,i*bandH,W,bandH); });
+
+  // 星
+  for (const s of stars){
+    const on = Math.sin(s.p*3) > -0.3;
+    ctx.fillStyle = on ? '#fff' : '#557';
+    ctx.fillRect(s.x, s.y, 1, 1);
+  }
+  // 街シルエット
+  ctx.fillStyle = '#0b0b20';
+  for (const b of city) ctx.fillRect(b.x, GROUND-b.h, b.w, b.h);
+  ctx.fillStyle = '#cc4';
+  for (const b of city) for (let yy=GROUND-b.h+3; yy<GROUND-2; yy+=4)
+    for (let xx=b.x+2; xx<b.x+b.w-1; xx+=3) if (((xx*7+yy*13)%5)===0) ctx.fillRect(xx,yy,1,1);
+
+  // 地面
+  ctx.fillStyle = '#2a6a2a'; ctx.fillRect(0,GROUND,W,2);
+  ctx.fillStyle = '#3a2a1a'; ctx.fillRect(0,GROUND+2,W,H-GROUND-2);
+  ctx.fillStyle = '#4a3a24';
+  for (let x=0;x<W;x+=8) ctx.fillRect(x+((x/8)%2)*4, GROUND+6, 3, 1);
+
+  // 問題ブロック
+  const tg = target();
+  const order = problems.filter(p=>p!==tg); if (tg) order.push(tg); // ねらう問題は一番手前に
+  for (const p of order){
+    const isT = p === tg;
+    const jx = p.jit>0 ? ((Math.random()*4-2)|0) : 0;
+    const x = Math.round(p.x)+jx, y = Math.round(p.y);
+    if (p.fast){ // 高速ブロックのスピード線
+      ctx.fillStyle = '#f66';
+      for (let k=0;k<3;k++){
+        const lx = x + 4 + k*(p.bw-8)/2 | 0;
+        const len = 6 + ((Math.floor(t*20)+k)%3)*3;
+        ctx.fillRect(lx, y-len-2, 1, len);
+      }
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(x+2,y+2,p.bw,p.bh);           // 影
+    ctx.fillStyle = p.fast ? '#6a1a1a' : (isT ? '#3a2a6a' : '#203060'); ctx.fillRect(x,y,p.bw,p.bh);
+    let border = p.fast ? '#f44' : '#6a8ad0';
+    if (isT) border = (Math.floor(t*6)%2) ? '#ff0' : '#fa0';
+    if (p.jit>0) border = '#f33';
+    ctx.fillStyle = border;
+    ctx.fillRect(x,y,p.bw,2); ctx.fillRect(x,y+p.bh-2,p.bw,2);
+    ctx.fillRect(x,y,2,p.bh); ctx.fillRect(x+p.bw-2,y,2,p.bh);
+    drawText(p.label, x+4, y+4, isT ? '#ff0' : '#fff', 2);
+    if (isT){ // 炎っぽい尾
+      ctx.fillStyle = (Math.floor(t*10)%2)?'#f80':'#f40';
+      ctx.fillRect(x+p.bw/2-3|0, y-3, 6, 2); ctx.fillRect(x+p.bw/2-1|0, y-6, 2, 2);
+    }
+  }
+
+  // レーザー
+  for (const l of lasers){
+    ctx.strokeStyle = (Math.floor(t*30)%2)?'#0ff':'#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(l.x1,l.y1); ctx.lineTo(l.x2,l.y2); ctx.stroke();
+  }
+  // パーティクル
+  for (const q of particles){ ctx.fillStyle=q.c; ctx.fillRect(q.x|0,q.y|0,q.s,q.s); }
+  // ポップアップ
+  for (const pp of popups) drawText(pp.txt, pp.x - textW(pp.txt)/2, pp.y, pp.txt.includes('=')?'#f88':'#ff0');
+
+  // 砲台
+  drawSprite(CANNON, W/2-7, GROUND-5, '#9cf');
+  drawSprite(['00000110000000','00000110000000'], W/2-7, GROUND-5, '#fff');
+
+  // 下パネル：ライフと入力
+  for (let i=0;i<3;i++) drawSprite(HEART, 6+i*10, GROUND+12, i<lives ? '#f33' : '#533');
+  const cursor = (Math.floor(t*3)%2) ? '_' : ' ';
+  const inStr = '>' + input + (state==='play' && input.length<2 ? cursor : '');
+  drawText(inStr, W/2+16, GROUND+9, wrongFlash>0 ? '#f33' : '#0f0', 2);
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0,0,W,11);
+  drawText('SCORE '+pad6(score), 3, 2, '#fff');
+  drawText('HI '+pad6(hiScore), 84, 2, '#8cf');
+  drawText('LV '+level, W-34, 2, '#ff0');
+
+  if (lvupTimer > 0 && Math.floor(t*8)%2) drawTextC('LEVEL UP!', 80+OY, '#0ff', 2);
+
+  // タイトル / ゲームオーバー
+  if (state === 'title'){
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,GROUND); ctx.translate(0,OY);
+    ctx.translate(0,-OY); // タイトルは上寄せ（下にメニューを重ねるため）
+    drawTextC('KUKU', 24, '#ff0', 4);
+    drawTextC('BLASTER', 58, '#f80', 3);
+    drawTextC('9x9=81', 88, '#8cf', 1);
+  } else if (state === 'over'){
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0,0,W,GROUND); ctx.translate(0,OY);
+    drawTextC('GAME OVER', 60, '#f33', 3);
+    drawTextC('SCORE '+pad6(score), 100, '#fff', 1);
+    drawTextC('LV '+level, 114, '#ff0', 1);
+    if (score>0 && score>=hiScore) drawTextC('NEW HI SCORE!', 130, '#0ff', 1);
+    drawTextC(playDans.length === 9 ? 'RANDOM' : 'DAN ' + playDans.join(' '), 146, '#8cf', 1);
+  }
+  ctx.restore();
+}
+
+// ====== メインループ ======
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  update(dt); draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
